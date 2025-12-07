@@ -17,6 +17,30 @@ from serena.tools.tools_base import ToolMarkerOptional
 from solidlsp.ls_types import SymbolKind
 
 
+def _parse_symbol_kinds(kinds: list[int], param_name: str) -> Sequence[SymbolKind] | None:
+    """
+    Parse and validate a list of symbol kind integers.
+
+    :param kinds: list of integers representing LSP symbol kinds
+    :param param_name: name of the parameter for error messages
+    :return: list of SymbolKind enums, or None if input is empty
+    :raises ValueError: if any kind value is invalid (not in range 1-26)
+    """
+    if not kinds:
+        return None
+    valid_kinds = set(k.value for k in SymbolKind)
+    invalid = [k for k in kinds if k not in valid_kinds]
+    if invalid:
+        raise ValueError(
+            f"Invalid {param_name} values: {invalid}. "
+            f"Valid symbol kinds are 1-26: 1=file, 2=module, 3=namespace, 4=package, 5=class, 6=method, "
+            f"7=property, 8=field, 9=constructor, 10=enum, 11=interface, 12=function, 13=variable, "
+            f"14=constant, 15=string, 16=number, 17=boolean, 18=array, 19=object, 20=key, 21=null, "
+            f"22=enum member, 23=struct, 24=event, 25=operator, 26=type parameter."
+        )
+    return [SymbolKind(k) for k in kinds]
+
+
 def _sanitize_symbol_dict(symbol_dict: dict[str, Any]) -> dict[str, Any]:
     """
     Sanitize a symbol dictionary inplace by removing unnecessary information.
@@ -134,8 +158,8 @@ class FindSymbolTool(Tool, ToolMarkerSymbolicRead):
             -1 means the default value from the config will be used.
         :return: a list of symbols (with locations) matching the name.
         """
-        parsed_include_kinds: Sequence[SymbolKind] | None = [SymbolKind(k) for k in include_kinds] if include_kinds else None
-        parsed_exclude_kinds: Sequence[SymbolKind] | None = [SymbolKind(k) for k in exclude_kinds] if exclude_kinds else None
+        parsed_include_kinds = _parse_symbol_kinds(include_kinds, "include_kinds")
+        parsed_exclude_kinds = _parse_symbol_kinds(exclude_kinds, "exclude_kinds")
         symbol_retriever = self.create_language_server_symbol_retriever()
         symbols = symbol_retriever.find(
             name_path_pattern,
@@ -176,8 +200,8 @@ class FindReferencingSymbolsTool(Tool, ToolMarkerSymbolicRead):
         :return: a list of JSON objects with the symbols referencing the requested symbol
         """
         include_body = False  # It is probably never a good idea to include the body of the referencing symbols
-        parsed_include_kinds: Sequence[SymbolKind] | None = [SymbolKind(k) for k in include_kinds] if include_kinds else None
-        parsed_exclude_kinds: Sequence[SymbolKind] | None = [SymbolKind(k) for k in exclude_kinds] if exclude_kinds else None
+        parsed_include_kinds = _parse_symbol_kinds(include_kinds, "include_kinds")
+        parsed_exclude_kinds = _parse_symbol_kinds(exclude_kinds, "exclude_kinds")
         symbol_retriever = self.create_language_server_symbol_retriever()
         references_in_symbols = symbol_retriever.find_referencing_symbols(
             name_path,

@@ -134,12 +134,18 @@ class NamePathMatcher(ToStringMixin):
         """
         :param name_path_pattern: the name path expression to match against
         :param substring_matching: whether to use substring matching for the last segment
+        :raises ValueError: if name_path_pattern is empty or invalid (e.g., just "/")
         """
-        assert name_path_pattern, "name_path must not be empty"
+        if not name_path_pattern:
+            raise ValueError("name_path_pattern must not be empty")
         self._expr = name_path_pattern
         self._substring_matching = substring_matching
         self._is_absolute_pattern = name_path_pattern.startswith(NAME_PATH_SEP)
         self._pattern_parts = name_path_pattern.lstrip(NAME_PATH_SEP).rstrip(NAME_PATH_SEP).split(NAME_PATH_SEP)
+
+        # Validate that pattern has at least one non-empty component
+        if not self._pattern_parts or all(p == "" for p in self._pattern_parts):
+            raise ValueError(f"Invalid name path pattern: '{name_path_pattern}' - pattern must contain at least one non-empty component")
 
         # extract overload index "[idx]" if present at end of last part
         self._overload_idx: int | None = None
@@ -195,11 +201,14 @@ class LanguageServerSymbol(Symbol, ToStringMixin):
         return []
 
     def _tostring_additional_entries(self) -> dict[str, Any]:
-        return dict(name=self.name, kind=self.kind, num_children=len(self.symbol_root["children"]))
+        return dict(name=self.name, kind=self.kind, num_children=len(self.symbol_root.get("children", [])))
 
     @property
     def name(self) -> str:
-        return self.symbol_root["name"]
+        name = self.symbol_root.get("name")
+        if name is None:
+            raise ValueError(f"Symbol is missing required 'name' field: {self.symbol_root}")
+        return name
 
     @property
     def kind(self) -> str:
@@ -207,7 +216,10 @@ class LanguageServerSymbol(Symbol, ToStringMixin):
 
     @property
     def symbol_kind(self) -> SymbolKind:
-        return self.symbol_root["kind"]
+        kind = self.symbol_root.get("kind")
+        if kind is None:
+            raise ValueError(f"Symbol is missing required 'kind' field: {self.symbol_root}")
+        return kind
 
     def is_low_level(self) -> bool:
         """
@@ -320,7 +332,7 @@ class LanguageServerSymbol(Symbol, ToStringMixin):
         return [a.name for a in ancestors_within_file] + [self.name]
 
     def iter_children(self) -> Iterator[Self]:
-        for c in self.symbol_root["children"]:
+        for c in self.symbol_root.get("children", []):
             yield self.__class__(c)
 
     def iter_ancestors(self, up_to_symbol_kind: SymbolKind | None = None) -> Iterator[Self]:

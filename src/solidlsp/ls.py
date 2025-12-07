@@ -660,7 +660,9 @@ class SolidLanguageServer(ABC):
         if isinstance(response, list):
             # response is either of type Location[] or LocationLink[]
             for item in response:
-                assert isinstance(item, dict)
+                if not isinstance(item, dict):  # defensive check for malformed LSP data
+                    log.warning(f"Unexpected item type in definition response: expected dict, got {type(item).__name__}. Skipping.")  # type: ignore[unreachable]
+                    continue
                 if LSPConstants.URI in item and LSPConstants.RANGE in item:
                     new_item: dict = {}
                     new_item.update(item)
@@ -675,23 +677,23 @@ class SolidLanguageServer(ABC):
                     new_item["range"] = item[LSPConstants.TARGET_SELECTION_RANGE]  # type: ignore
                     ret.append(ls_types.Location(**new_item))  # type: ignore
                 else:
-                    assert False, f"Unexpected response from Language Server: {item}"
+                    log.warning(f"Unexpected definition response format from Language Server (missing required fields): {item}. Skipping.")
         elif isinstance(response, dict):
             # response is of type Location
-            assert LSPConstants.URI in response
-            assert LSPConstants.RANGE in response
-
-            new_item: dict = {}  # type: ignore
-            new_item.update(response)
-            new_item["absolutePath"] = PathUtils.uri_to_path(new_item["uri"])
-            new_item["relativePath"] = PathUtils.get_relative_path(new_item["absolutePath"], self.repository_root_path)
-            ret.append(ls_types.Location(**new_item))  # type: ignore
+            if LSPConstants.URI not in response or LSPConstants.RANGE not in response:
+                log.warning(f"Definition response missing required fields (uri/range): {response}")
+            else:
+                new_item: dict = {}  # type: ignore
+                new_item.update(response)
+                new_item["absolutePath"] = PathUtils.uri_to_path(new_item["uri"])
+                new_item["relativePath"] = PathUtils.get_relative_path(new_item["absolutePath"], self.repository_root_path)
+                ret.append(ls_types.Location(**new_item))  # type: ignore
         elif response is None:
             # Some language servers return None when they cannot find a definition
             # This is expected for certain symbol types like generics or types with incomplete information
             log.warning(f"Language server returned None for definition request at {relative_file_path}:{line}:{column}")
-        else:
-            assert False, f"Unexpected response from Language Server: {response}"
+        else:  # defensive check for malformed LSP data
+            log.warning(f"Unexpected response type from Language Server for definition: {type(response).__name__}")  # type: ignore[unreachable]
 
         return ret
 
@@ -742,11 +744,18 @@ class SolidLanguageServer(ABC):
             return []
 
         ret: list[ls_types.Location] = []
-        assert isinstance(response, list), f"Unexpected response from Language Server (expected list, got {type(response)}): {response}"
+        if not isinstance(response, list):  # defensive check for malformed LSP data
+            log.warning(  # type: ignore[unreachable]
+                f"Unexpected response from Language Server for references (expected list, got {type(response).__name__}): {response}"
+            )
+            return ret
         for item in response:
-            assert isinstance(item, dict), f"Unexpected response from Language Server (expected dict, got {type(item)}): {item}"
-            assert LSPConstants.URI in item
-            assert LSPConstants.RANGE in item
+            if not isinstance(item, dict):  # defensive check for malformed LSP data
+                log.warning(f"Unexpected item in references response (expected dict, got {type(item).__name__}): {item}. Skipping.")  # type: ignore[unreachable]
+                continue
+            if LSPConstants.URI not in item or LSPConstants.RANGE not in item:
+                log.warning(f"References response item missing required fields (uri/range): {item}. Skipping.")
+                continue
 
             abs_path = PathUtils.uri_to_path(item[LSPConstants.URI])  # type: ignore
             if not Path(abs_path).is_relative_to(self.repository_root_path):
@@ -1014,7 +1023,11 @@ class SolidLanguageServer(ABC):
                 )
                 return DocumentSymbols([])
 
-            assert isinstance(root_symbols, list), f"Unexpected response from Language Server: {root_symbols}"
+            if not isinstance(root_symbols, list):  # defensive check for malformed LSP data
+                log.warning(  # type: ignore[unreachable]
+                    f"Unexpected response from Language Server for document symbols (expected list): {type(root_symbols).__name__}. Returning empty list."
+                )
+                return DocumentSymbols([])
             log.debug("Received %d root symbols for %s from the language server", len(root_symbols), relative_file_path)
 
             file_lines = file_data.split_lines()
@@ -1034,7 +1047,11 @@ class SolidLanguageServer(ABC):
                 # handle missing location and path entries
                 if "location" not in item:
                     uri = pathlib.Path(absolute_path).as_uri()
-                    assert "range" in item
+                    if "range" not in item:
+                        log.warning(
+                            f"Symbol missing both 'location' and 'range' fields: {item.get('name', '<unknown>')}. Using default range."
+                        )
+                        item["range"] = {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}
                     tree_location = ls_types.Location(
                         uri=uri,
                         range=item["range"],
@@ -1348,22 +1365,41 @@ class SolidLanguageServer(ABC):
     ) -> str:
         """
         Load the body of the given symbol. If the body is already contained in the symbol, just return it.
+        Returns empty string if the symbol lacks the required location data.
         """
         existing_body = symbol.get("body", None)
         if existing_body:
             return str(existing_body)
 
-        assert "location" in symbol
-        symbol_start_line = symbol["location"]["range"]["start"]["line"]
-        symbol_end_line = symbol["location"]["range"]["end"]["line"]
-        assert "relativePath" in symbol["location"]
+        # Validate required location data
+        if "location" not in symbol:
+            log.warning(f"Cannot retrieve body for symbol '{symbol.get('name', '<unknown>')}': missing 'location' field")
+            return ""
+
+        location = symbol["location"]
+        if "range" not in location:  # defensive check for malformed LSP data
+            log.warning(f"Cannot retrieve body for symbol '{symbol.get('name', '<unknown>')}': missing 'range' in location")  # type: ignore[unreachable]
+            return ""
+
+        range_data = location["range"]
+        if "start" not in range_data or "end" not in range_data:  # defensive check for malformed LSP data
+            log.warning(f"Cannot retrieve body for symbol '{symbol.get('name', '<unknown>')}': incomplete range data")  # type: ignore[unreachable]
+            return ""
+
+        if "relativePath" not in location:  # defensive check for malformed LSP data
+            log.warning(f"Cannot retrieve body for symbol '{symbol.get('name', '<unknown>')}': missing 'relativePath' in location")  # type: ignore[unreachable]
+            return ""
+
+        symbol_start_line = range_data["start"].get("line", 0)
+        symbol_end_line = range_data["end"].get("line", 0)
+
         if file_lines is None:
-            with self._open_file_context(symbol["location"]["relativePath"], file_buffer) as f:  # type: ignore
+            with self._open_file_context(location["relativePath"], file_buffer) as f:  # type: ignore
                 file_lines = f.split_lines()
         symbol_body = "\n".join(file_lines[symbol_start_line : symbol_end_line + 1])
 
         # remove leading indentation
-        symbol_start_column = symbol["location"]["range"]["start"]["character"]  # type: ignore
+        symbol_start_column = range_data["start"].get("character", 0)
         symbol_body = symbol_body[symbol_start_column:]
         return symbol_body
 

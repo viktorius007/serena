@@ -2,12 +2,15 @@
 This file contains various utility functions like I/O operations, handling paths, etc.
 """
 
+import base64
 import gzip
+import hashlib
 import logging
 import os
 import platform
 import shutil
 import subprocess
+import tarfile
 import uuid
 import zipfile
 from enum import Enum
@@ -217,9 +220,83 @@ class FileUtils:
             raise SolidLSPException("Error downloading file.") from None
 
     @staticmethod
-    def download_and_extract_archive(url: str, target_path: str, archive_type: str) -> None:
+    def _hash_file(path: str, algo: str, chunk_size: int = 1024 * 1024) -> str:
+        """Compute a hex digest for the file using the given hashlib algorithm (e.g., 'sha256', 'sha512')."""
+        h = hashlib.new(algo)
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(chunk_size), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    @staticmethod
+    def _verify_hash_auto(path: str, expected: str) -> None:
+        """Verify the file digest, auto-detecting SHA-256 vs SHA-512.
+        Accepts expected as hex, or base64 (will be normalized to hex).
         """
-        Downloads the archive from the given URL having format {archive_type} and extracts it to the given {target_path}
+        exp = expected.strip()
+        # Normalize base64 to hex if applicable
+        try:
+            if "/" in exp or "+" in exp or "=" in exp:
+                raw = base64.b64decode(exp, validate=True)
+                exp = raw.hex()
+        except Exception:
+            pass
+        algo = "sha256" if len(exp) == 64 else ("sha512" if len(exp) == 128 else None)
+        if not algo:
+            raise SolidLSPException(f"Unsupported expected hash length ({len(exp)}); expected 64 or 128 hex chars")
+        actual = FileUtils._hash_file(path, algo)
+        if actual.lower() != exp.lower():
+            raise SolidLSPException(
+                f"{algo.upper()} mismatch for {path}: expected {exp}, got {actual}"
+            )
+
+    @staticmethod
+    def _fetch_expected_hash_from_url(checksum_url: str, filename: str) -> str:
+        """Download a checksum file and extract the sha256 for the given filename.
+
+        Supports common formats like:
+        - "<sha256>  <filename>"
+        - "<sha256> *<filename>"
+        - Files that contain only a single hex digest (common for per‑asset .sha256sum files)
+        Ignores comment lines starting with '#'.
+        """
+        try:
+            resp = requests.get(checksum_url, timeout=60)
+            resp.raise_for_status()
+            text = resp.text.strip()
+            lines = text.splitlines()
+            # Try mapping style first (e.g., SHA256SUMS)
+            for line in lines:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split()
+                if len(parts) >= 2:
+                    sha, name = parts[0], parts[-1]
+                    if name.startswith("*"):
+                        name = name[1:]
+                    if name == filename:
+                        return sha
+            # Fallback: single-hash file
+            # If the file appears to contain a single hex digest, use it.
+            if len(lines) == 1 and all(c in "0123456789abcdefABCDEF" for c in lines[0].strip()):
+                return lines[0].strip()
+            raise SolidLSPException(f"Checksum for '{filename}' not found in {checksum_url}")
+        except Exception as exc:
+            raise SolidLSPException(f"Failed to fetch or parse checksum file {checksum_url}: {exc}") from exc
+
+    @staticmethod
+    def download_and_extract_archive(
+        url: str,
+        target_path: str,
+        archive_type: str,
+        expected_sha256: str | None = None,
+        checksum_url: str | None = None,
+    ) -> None:
+        """
+        Downloads the archive from the given URL having format {archive_type} and extracts it to the given {target_path}.
+        Optionally verifies the SHA256 of the downloaded file before extraction, either via an explicit
+        expected hash or by fetching an official checksum file.
         """
         try:
             tmp_files = []
@@ -227,29 +304,63 @@ class FileUtils:
             tmp_files.append(tmp_file_name)
             os.makedirs(os.path.dirname(tmp_file_name), exist_ok=True)
             FileUtils.download_file(url, tmp_file_name)
+
+            # Determine expected sha256 if not provided explicitly
+            if expected_sha256 is None and checksum_url is not None:
+                from urllib.parse import urlparse
+
+                download_filename = os.path.basename(urlparse(url).path)
+                expected_sha256 = FileUtils._fetch_expected_hash_from_url(checksum_url, download_filename)
+
+            if expected_sha256:
+                FileUtils._verify_hash_auto(tmp_file_name, expected_sha256)
+
+            # Ensure target directory exists
+            if archive_type in ["tar", "gztar", "bztar", "xztar", "zip", "zip.gz"]:
+                os.makedirs(target_path, exist_ok=True)
+
+            def _is_within_directory(base: str, path: str) -> bool:
+                base_abs = os.path.abspath(base)
+                path_abs = os.path.abspath(path)
+                return os.path.commonprefix([base_abs + os.sep, path_abs + os.sep]) == base_abs + os.sep
+
             if archive_type in ["tar", "gztar", "bztar", "xztar"]:
-                os.makedirs(target_path, exist_ok=True)
-                shutil.unpack_archive(tmp_file_name, target_path, archive_type)
+                # Use tarfile with path traversal protection
+                with tarfile.open(tmp_file_name, mode="r:*") as tar:
+                    for member in tar.getmembers():
+                        dest = os.path.join(target_path, member.name)
+                        if not _is_within_directory(target_path, dest):
+                            raise SolidLSPException(f"Unsafe path detected in tar archive: {member.name}")
+                    tar.extractall(target_path)  # safe due to pre-check
             elif archive_type == "zip":
-                os.makedirs(target_path, exist_ok=True)
                 with zipfile.ZipFile(tmp_file_name, "r") as zip_ref:
                     for zip_info in zip_ref.infolist():
+                        dest = os.path.join(target_path, zip_info.filename)
+                        if not _is_within_directory(target_path, dest):
+                            raise SolidLSPException(f"Unsafe path detected in zip archive: {zip_info.filename}")
                         extracted_path = zip_ref.extract(zip_info, target_path)
                         ZIP_SYSTEM_UNIX = 3  # zip file created on Unix system
-                        if zip_info.create_system != ZIP_SYSTEM_UNIX:
-                            continue
-                        # extractall() does not preserve permissions
-                        # see. https://github.com/python/cpython/issues/59999
-                        attrs = (zip_info.external_attr >> 16) & 0o777
-                        if attrs:
-                            os.chmod(extracted_path, attrs)
+                        if zip_info.create_system == ZIP_SYSTEM_UNIX:
+                            # Preserve Unix permissions
+                            attrs = (zip_info.external_attr >> 16) & 0o777
+                            if attrs:
+                                os.chmod(extracted_path, attrs)
             elif archive_type == "zip.gz":
-                os.makedirs(target_path, exist_ok=True)
                 tmp_file_name_ungzipped = tmp_file_name + ".zip"
                 tmp_files.append(tmp_file_name_ungzipped)
                 with gzip.open(tmp_file_name, "rb") as f_in, open(tmp_file_name_ungzipped, "wb") as f_out:
                     shutil.copyfileobj(f_in, f_out)
-                shutil.unpack_archive(tmp_file_name_ungzipped, target_path, "zip")
+                with zipfile.ZipFile(tmp_file_name_ungzipped, "r") as zip_ref:
+                    for zip_info in zip_ref.infolist():
+                        dest = os.path.join(target_path, zip_info.filename)
+                        if not _is_within_directory(target_path, dest):
+                            raise SolidLSPException(f"Unsafe path detected in zip.gz archive: {zip_info.filename}")
+                        extracted_path = zip_ref.extract(zip_info, target_path)
+                        ZIP_SYSTEM_UNIX = 3
+                        if zip_info.create_system == ZIP_SYSTEM_UNIX:
+                            attrs = (zip_info.external_attr >> 16) & 0o777
+                            if attrs:
+                                os.chmod(extracted_path, attrs)
             elif archive_type == "gz":
                 with gzip.open(tmp_file_name, "rb") as f_in, open(target_path, "wb") as f_out:
                     shutil.copyfileobj(f_in, f_out)

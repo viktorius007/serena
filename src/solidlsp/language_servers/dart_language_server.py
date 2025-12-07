@@ -39,6 +39,7 @@ class DartLanguageServer(SolidLanguageServer):
                     platform_id="linux-x64",
                     archive_type="zip",
                     binary_name="dart-sdk/bin/dart",
+                    checksum_url="https://storage.googleapis.com/dart-archive/channels/stable/release/3.7.1/sdk/dartsdk-linux-x64-release.zip.sha256sum",
                 ),
                 RuntimeDependency(
                     id="DartLanguageServer",
@@ -47,6 +48,7 @@ class DartLanguageServer(SolidLanguageServer):
                     platform_id="win-x64",
                     archive_type="zip",
                     binary_name="dart-sdk/bin/dart.exe",
+                    checksum_url="https://storage.googleapis.com/dart-archive/channels/stable/release/3.7.1/sdk/dartsdk-windows-x64-release.zip.sha256sum",
                 ),
                 RuntimeDependency(
                     id="DartLanguageServer",
@@ -55,6 +57,7 @@ class DartLanguageServer(SolidLanguageServer):
                     platform_id="win-arm64",
                     archive_type="zip",
                     binary_name="dart-sdk/bin/dart.exe",
+                    checksum_url="https://storage.googleapis.com/dart-archive/channels/stable/release/3.7.1/sdk/dartsdk-windows-arm64-release.zip.sha256sum",
                 ),
                 RuntimeDependency(
                     id="DartLanguageServer",
@@ -63,6 +66,7 @@ class DartLanguageServer(SolidLanguageServer):
                     platform_id="osx-x64",
                     archive_type="zip",
                     binary_name="dart-sdk/bin/dart",
+                    checksum_url="https://storage.googleapis.com/dart-archive/channels/stable/release/3.7.1/sdk/dartsdk-macos-x64-release.zip.sha256sum",
                 ),
                 RuntimeDependency(
                     id="DartLanguageServer",
@@ -71,6 +75,7 @@ class DartLanguageServer(SolidLanguageServer):
                     platform_id="osx-arm64",
                     archive_type="zip",
                     binary_name="dart-sdk/bin/dart",
+                    checksum_url="https://storage.googleapis.com/dart-archive/channels/stable/release/3.7.1/sdk/dartsdk-macos-arm64-release.zip.sha256sum",
                 ),
             ]
         )

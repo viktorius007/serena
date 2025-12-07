@@ -94,47 +94,55 @@ class TerraformLS(SolidLanguageServer):
         """
         cls._ensure_tf_command_available()
         platform_id = PlatformUtils.get_platform_id()
+        tf_version = "0.36.5"
+        base = f"https://releases.hashicorp.com/terraform-ls/{tf_version}"
+        sums = f"{base}/terraform-ls_{tf_version}_SHA256SUMS"
         deps = RuntimeDependencyCollection(
             [
                 RuntimeDependency(
                     id="TerraformLS",
                     description="terraform-ls for macOS (ARM64)",
-                    url="https://releases.hashicorp.com/terraform-ls/0.36.5/terraform-ls_0.36.5_darwin_arm64.zip",
+                    url=f"{base}/terraform-ls_{tf_version}_darwin_arm64.zip",
                     platform_id="osx-arm64",
                     archive_type="zip",
                     binary_name="terraform-ls",
+                    checksum_url=sums,
                 ),
                 RuntimeDependency(
                     id="TerraformLS",
                     description="terraform-ls for macOS (x64)",
-                    url="https://releases.hashicorp.com/terraform-ls/0.36.5/terraform-ls_0.36.5_darwin_amd64.zip",
+                    url=f"{base}/terraform-ls_{tf_version}_darwin_amd64.zip",
                     platform_id="osx-x64",
                     archive_type="zip",
                     binary_name="terraform-ls",
+                    checksum_url=sums,
                 ),
                 RuntimeDependency(
                     id="TerraformLS",
                     description="terraform-ls for Linux (ARM64)",
-                    url="https://releases.hashicorp.com/terraform-ls/0.36.5/terraform-ls_0.36.5_linux_arm64.zip",
+                    url=f"{base}/terraform-ls_{tf_version}_linux_arm64.zip",
                     platform_id="linux-arm64",
                     archive_type="zip",
                     binary_name="terraform-ls",
+                    checksum_url=sums,
                 ),
                 RuntimeDependency(
                     id="TerraformLS",
                     description="terraform-ls for Linux (x64)",
-                    url="https://releases.hashicorp.com/terraform-ls/0.36.5/terraform-ls_0.36.5_linux_amd64.zip",
+                    url=f"{base}/terraform-ls_{tf_version}_linux_amd64.zip",
                     platform_id="linux-x64",
                     archive_type="zip",
                     binary_name="terraform-ls",
+                    checksum_url=sums,
                 ),
                 RuntimeDependency(
                     id="TerraformLS",
                     description="terraform-ls for Windows (x64)",
-                    url="https://releases.hashicorp.com/terraform-ls/0.36.5/terraform-ls_0.36.5_windows_amd64.zip",
+                    url=f"{base}/terraform-ls_{tf_version}_windows_amd64.zip",
                     platform_id="win-x64",
                     archive_type="zip",
                     binary_name="terraform-ls.exe",
+                    checksum_url=sums,
                 ),
             ]
         )

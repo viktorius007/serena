@@ -28,6 +28,8 @@ class RuntimeDependency:
     package_version: str | None = None
     extract_path: str | None = None
     description: str | None = None
+    sha256: str | None = None
+    checksum_url: str | None = None
 
 
 class RuntimeDependencyCollection:
@@ -98,23 +100,36 @@ class RuntimeDependencyCollection:
 
     @staticmethod
     def _run_command(command: str | list[str], cwd: str) -> None:
+        """Run a command safely and portably.
+
+        - Avoid unsupported kwargs to subprocess on non-Windows
+        - Prefer shell=False when possible to reduce injection surface
+        """
+        import shlex
+
         kwargs = subprocess_kwargs()
-        if not PlatformUtils.get_platform_id().is_windows():
-            import pwd
-
-            kwargs["user"] = pwd.getpwuid(os.getuid()).pw_name  # type: ignore
-
         is_windows = platform.system() == "Windows"
-        if not isinstance(command, str) and not is_windows:
-            # Since we are using the shell, we need to convert the command list to a single string
-            # on Linux/macOS
-            command = " ".join(command)
 
-        log.info("Running command %s in '%s'", f"'{command}'" if isinstance(command, str) else command, cwd)
+        # Normalize command and decide whether to invoke a shell
+        shell = False
+        cmd: list[str] | str
+        if isinstance(command, str):
+            if is_windows:
+                # On Windows, keep the string and let the shell interpret it
+                shell = True
+                cmd = command
+            else:
+                # On POSIX, split to argv list to avoid using a shell
+                cmd = shlex.split(command)
+        else:
+            # Already a sequence; call without shell
+            cmd = command
+
+        log.info("Running command %s in '%s'", cmd if not isinstance(cmd, str) else f"'{cmd}'", cwd)
 
         completed_process = subprocess.run(
-            command,
-            shell=True,
+            cmd,
+            shell=shell,
             check=True,
             cwd=cwd,
             stdout=subprocess.PIPE,
@@ -122,12 +137,10 @@ class RuntimeDependencyCollection:
             **kwargs,
         )  # type: ignore
         if completed_process.returncode != 0:
-            log.warning("Command '%s' failed with return code %d", command, completed_process.returncode)
+            log.warning("Command '%s' failed with return code %d", cmd, completed_process.returncode)
             log.warning("Command output:\n%s", completed_process.stdout)
         else:
-            log.info(
-                "Command completed successfully",
-            )
+            log.info("Command completed successfully")
 
     @staticmethod
     def _install_from_url(dep: RuntimeDependency, target_dir: str) -> None:
@@ -136,9 +149,21 @@ class RuntimeDependencyCollection:
 
         if dep.archive_type in ("gz", "binary") and dep.binary_name:
             dest = os.path.join(target_dir, dep.binary_name)
-            FileUtils.download_and_extract_archive(dep.url, dest, dep.archive_type)
+            FileUtils.download_and_extract_archive(
+                dep.url,
+                dest,
+                dep.archive_type,
+                expected_sha256=dep.sha256,
+                checksum_url=dep.checksum_url,
+            )
         else:
-            FileUtils.download_and_extract_archive(dep.url, target_dir, dep.archive_type or "zip")
+            FileUtils.download_and_extract_archive(
+                dep.url,
+                target_dir,
+                dep.archive_type or "zip",
+                expected_sha256=dep.sha256,
+                checksum_url=dep.checksum_url,
+            )
 
 
 def quote_windows_path(path: str) -> str:

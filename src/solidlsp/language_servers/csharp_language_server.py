@@ -99,6 +99,7 @@ _RUNTIME_DEPENDENCIES = [
         platform_id="win-x64",
         archive_type="zip",
         binary_name="dotnet.exe",
+        checksum_url="https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.6/dotnet-runtime-9.0.6-win-x64.zip.sha512",
     ),
     RuntimeDependency(
         id="DotNetRuntime",
@@ -107,6 +108,7 @@ _RUNTIME_DEPENDENCIES = [
         platform_id="linux-x64",
         archive_type="tar.gz",
         binary_name="dotnet",
+        checksum_url="https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.6/dotnet-runtime-9.0.6-linux-x64.tar.gz.sha512",
     ),
     RuntimeDependency(
         id="DotNetRuntime",
@@ -115,6 +117,7 @@ _RUNTIME_DEPENDENCIES = [
         platform_id="linux-arm64",
         archive_type="tar.gz",
         binary_name="dotnet",
+        checksum_url="https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.6/dotnet-runtime-9.0.6-linux-arm64.tar.gz.sha512",
     ),
     RuntimeDependency(
         id="DotNetRuntime",
@@ -123,6 +126,7 @@ _RUNTIME_DEPENDENCIES = [
         platform_id="osx-x64",
         archive_type="tar.gz",
         binary_name="dotnet",
+        checksum_url="https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.6/dotnet-runtime-9.0.6-osx-x64.tar.gz.sha512",
     ),
     RuntimeDependency(
         id="DotNetRuntime",
@@ -131,6 +135,7 @@ _RUNTIME_DEPENDENCIES = [
         platform_id="osx-arm64",
         archive_type="tar.gz",
         binary_name="dotnet",
+        checksum_url="https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.6/dotnet-runtime-9.0.6-osx-arm64.tar.gz.sha512",
     ),
 ]
 

@@ -4,111 +4,78 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Commands
 
+**Setup:**
+- `uv sync --all-extras` - Install all dependencies including dev tools
+
 **Essential Commands (use these exact commands):**
 - `uv run poe format` - Format code (BLACK + RUFF) - ONLY allowed formatting command
-- `uv run poe type-check` - Run mypy type checking - ONLY allowed type checking command  
-- `uv run poe test` - Run tests with default markers (excludes java/rust by default)
-- `uv run poe test -m "python or go"` - Run specific language tests
-- `uv run poe test -m vue` - Run Vue tests
+- `uv run poe type-check` - Run mypy type checking - ONLY allowed type checking command
+- `uv run poe test` - Run tests with default markers (excludes rust/erlang by default)
 - `uv run poe lint` - Check code style without fixing
 
-**Test Markers:**
-Available pytest markers for selective testing:
-- `python`, `go`, `java`, `rust`, `typescript`, `vue`, `php`, `perl`, `csharp`, `elixir`, `terraform`, `clojure`, `swift`, `bash`, `ruby`, `ruby_solargraph`
-- `snapshot` - for symbolic editing operation tests
+**Running Specific Tests:**
+- `uv run poe test -m "python or go"` - Run tests for specific languages
+- `uv run pytest test/solidlsp/python/test_python_basic.py -v` - Run single test file
+- `uv run pytest test/solidlsp/python/test_python_basic.py::test_find_symbol -v` - Run single test function
 
-**Project Management:**
-- `uv run serena-mcp-server` - Start MCP server from project root
-- `uv run index-project` - Index project for faster tool performance
+**Test Markers:** `python`, `go`, `java`, `rust`, `typescript`, `php`, `perl`, `csharp`, `elixir`, `terraform`, `clojure`, `swift`, `bash`, `ruby`, `zig`, `lua`, `nix`, `dart`, `scala`, `al`, `rego`, `markdown`, `julia`, `fortran`, `haskell`, `yaml`, `snapshot`
+
+**Starting the Server:**
+- `uv run serena-mcp-server` - Start MCP server (CLI entry point: `src/serena/cli.py`)
 
 **Always run format, type-check, and test before completing any task.**
 
 ## Architecture Overview
 
-Serena is a dual-layer coding agent toolkit:
+Serena is a dual-layer coding agent toolkit exposing IDE-like capabilities via MCP (Model Context Protocol).
 
 ### Core Components
 
-**1. SerenaAgent (`src/serena/agent.py`)**
-- Central orchestrator managing projects, tools, and user interactions
-- Coordinates language servers, memory persistence, and MCP server interface
-- Manages tool registry and context/mode configurations
+**SerenaAgent** (`src/serena/agent.py`) - Central orchestrator managing projects, tools, language servers, and memory persistence. Exposes tools via MCP server (`src/serena/mcp.py`).
 
-**2. SolidLanguageServer (`src/solidlsp/ls.py`)**  
-- Unified wrapper around Language Server Protocol (LSP) implementations
-- Provides language-agnostic interface for symbol operations
-- Handles caching, error recovery, and multiple language server lifecycle
+**SolidLanguageServer** (`src/solidlsp/ls.py`) - Unified synchronous wrapper around 30+ LSP implementations. Provides language-agnostic symbol operations with caching and error recovery. Key abstraction: wraps async LSP communication in synchronous Python API.
 
-**3. Tool System (`src/serena/tools/`)**
-- **file_tools.py** - File system operations, search, regex replacements
-- **symbol_tools.py** - Language-aware symbol finding, navigation, editing
-- **memory_tools.py** - Project knowledge persistence and retrieval
-- **config_tools.py** - Project activation, mode switching
-- **workflow_tools.py** - Onboarding and meta-operations
+**Tool System** (`src/serena/tools/`) - MCP tools inheriting from `Tool` base class in `tools_base.py`. Tools are registered via decorators and filtered by context/mode configuration.
 
-**4. Configuration System (`src/serena/config/`)**
-- **Contexts** - Define tool sets for different environments (desktop-app, agent, ide-assistant)
-- **Modes** - Operational patterns (planning, editing, interactive, one-shot)
-- **Projects** - Per-project settings and language server configs
+**Configuration System** (`src/serena/config/`) - YAML-based configs in `src/serena/resources/config/`:
+- **Contexts** (`contexts/`) - Tool sets for environments (ide-assistant, agent, desktop-app)
+- **Modes** (`modes/`) - Operational patterns (interactive, editing, planning, one-shot)
 
-### Language Support Architecture
+### Language Support
 
-Each supported language has:
-1. **Language Server Implementation** in `src/solidlsp/language_servers/`
-2. **Runtime Dependencies** - Automatic language server downloads when needed
-3. **Test Repository** in `test/resources/repos/<language>/`
-4. **Test Suite** in `test/solidlsp/<language>/`
+Each language requires:
+1. Language server class in `src/solidlsp/language_servers/`
+2. Entry in `Language` enum in `src/solidlsp/ls_config.py`
+3. Test repo in `test/resources/repos/<language>/` and tests in `test/solidlsp/<language>/`
+4. Pytest marker in `pyproject.toml`
 
-### Memory & Knowledge System
+### Memory System
 
-- **Markdown-based storage** in `.serena/memories/` directories
-- **Project-specific knowledge** persistence across sessions
-- **Contextual retrieval** based on relevance
-- **Onboarding support** for new projects
+Markdown files in `.serena/memories/` directories provide persistent project knowledge across sessions.
 
 ## Development Patterns
 
-### Adding New Languages
-1. Create language server class in `src/solidlsp/language_servers/`
-2. Add to Language enum in `src/solidlsp/ls_config.py` 
-3. Update factory method in `src/solidlsp/ls.py`
-4. Create test repository in `test/resources/repos/<language>/`
-5. Write test suite in `test/solidlsp/<language>/`
-6. Add pytest marker to `pyproject.toml`
-
 ### Adding New Tools
-1. Inherit from `Tool` base class in `src/serena/tools/tools_base.py`
-2. Implement required methods and parameter validation
-3. Register in appropriate tool registry
-4. Add to context/mode configurations
+1. Subclass `Tool` in `src/serena/tools/tools_base.py`
+2. Implement `apply` method with typed parameters
+3. Add to context/mode YAML configs as needed
 
-### Testing Strategy
-- Language-specific tests use pytest markers
-- Symbolic editing operations have snapshot tests
-- Integration tests in `test_serena_agent.py`
-- Test repositories provide realistic symbol structures
+### Testing
+- Language tests use pytest markers (run specific language: `uv run poe test -m python`)
+- Snapshot tests for symbolic editing: `uv run poe test -m snapshot`
+- Integration tests: `test/serena/test_serena_agent.py`
 
 ## Configuration Hierarchy
 
-Configuration is loaded from (in order of precedence):
-1. Command-line arguments to `serena-mcp-server`
+Configuration precedence (highest to lowest):
+1. CLI arguments to `serena-mcp-server`
 2. Project-specific `.serena/project.yml`
 3. User config `~/.serena/serena_config.yml`
-4. Active modes and contexts
+4. Default contexts and modes
 
 ## Key Implementation Notes
 
-- **Symbol-based editing** - Uses LSP for precise code manipulation
-- **Caching strategy** - Reduces language server overhead
-- **Error recovery** - Automatic language server restart on crashes
-- **Multi-language support** - 19 languages with LSP integration (including Vue)
-- **MCP protocol** - Exposes tools to AI agents via Model Context Protocol
-- **Async operation** - Non-blocking language server interactions
-
-## Working with the Codebase
-
-- Project uses Python 3.11 with `uv` for dependency management
-- Strict typing with mypy, formatted with black + ruff
-- Language servers run as separate processes with LSP communication
-- Memory system enables persistent project knowledge
-- Context/mode system allows workflow customization
+- **Python 3.11 only** (strict version requirement in pyproject.toml)
+- **Synchronous LSP wrapper** - SolidLanguageServer wraps async LSP in sync API for simpler tool implementation
+- **Language servers as subprocesses** - Each runs in separate process, communication via JSON-RPC
+- **Symbol-based editing** - Prefer `replace_symbol_body`, `insert_after_symbol` over line-based edits

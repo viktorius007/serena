@@ -299,9 +299,13 @@ class LanguageServerCodeEditor(CodeEditor[LanguageServerSymbol]):
         assert symbol.location.column is not None
 
         lang_server = self._get_language_server(relative_file_path)
-        rename_result = lang_server.request_rename_symbol_edit(
-            relative_file_path=relative_file_path, line=symbol.location.line, column=symbol.location.column, new_name=new_name
-        )
+        # TypeScript (and other LS) require the file to be open when rename requests are issued, otherwise
+        # the server may return no edits even though the symbol is valid. Ensuring the file is open mirrors
+        # how other language-server-backed operations are performed.
+        with lang_server.open_file(relative_file_path):
+            rename_result = lang_server.request_rename_symbol_edit(
+                relative_file_path=relative_file_path, line=symbol.location.line, column=symbol.location.column, new_name=new_name
+            )
         if rename_result is None:
             raise ValueError(
                 f"Language server for {lang_server.language_id} returned no rename edits for symbol '{name_path}'. "

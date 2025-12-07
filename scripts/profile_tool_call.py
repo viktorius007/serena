@@ -38,7 +38,7 @@ if __name__ == "__main__":
         """This is the function we want to profile."""
         # NOTE: We use apply (not apply_ex) to run the tool call directly on the main thread
         with LogTime("Tool call"):
-            result = agent.get_tool(FindSymbolTool).apply(name_path="DQN")
+            result = agent.get_tool(FindSymbolTool).apply(name_path_pattern="DQN")
         log.info("Tool result:\n%s", result)
 
     if profiler == "pyinstrument":

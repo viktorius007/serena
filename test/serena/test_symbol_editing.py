@@ -648,3 +648,14 @@ VUE_STORE_REPLACED_CLEAR_BODY = """function clear() {
 def test_replace_body_vue_ts_file(test_case: ReplaceBodyTest, snapshot: SnapshotAssertion) -> None:
     """Test that TypeScript files within Vue projects can be edited."""
     test_case.run_test(content_after_ground_truth=snapshot)
+
+
+@pytest.mark.typescript
+def test_rename_symbol_typescript(snapshot: SnapshotAssertion):
+    test_case = RenameSymbolTest(
+        Language.TYPESCRIPT,
+        TYPESCRIPT_TEST_FILE,
+        "helperFunction",
+        "renamedHelperFunction",
+    )
+    test_case.run_test(content_after_ground_truth=snapshot)

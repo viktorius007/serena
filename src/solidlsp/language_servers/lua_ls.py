@@ -107,7 +107,7 @@ class LuaLanguageServer(SolidLanguageServer):
 
         # Download the file
         print(f"Downloading lua-language-server from {download_url}...")
-        response = requests.get(download_url, stream=True)
+        response = requests.get(download_url, stream=True, timeout=300)
         response.raise_for_status()
 
         # Save and extract

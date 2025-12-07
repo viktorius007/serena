@@ -1767,6 +1767,27 @@
   
   '''
 # ---
+# name: test_rename_symbol_typescript
+  '''
+  export class DemoClass {
+      value: number;
+      constructor(value: number) {
+          this.value = value;
+      }
+      printValue() {
+          console.log(this.value);
+      }
+  }
+  
+  export function renamedHelperFunction() {
+      const demo = new DemoClass(42);
+      demo.printValue();
+  }
+  
+  renamedHelperFunction();
+  
+  '''
+# ---
 # name: test_replace_body[test_case0]
   '''
   """

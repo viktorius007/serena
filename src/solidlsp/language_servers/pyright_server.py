@@ -31,10 +31,13 @@ class PyrightServer(SolidLanguageServer):
         Creates a PyrightServer instance. This class is not meant to be instantiated directly.
         Use LanguageServer.create() instead.
         """
+        import shutil
+        pyright_cli = shutil.which("pyright-langserver")
+        cmd = f"{pyright_cli} --stdio" if pyright_cli else "python -m pyright.langserver --stdio"
         super().__init__(
             config,
             repository_root_path,
-            ProcessLaunchInfo(cmd="python -m pyright.langserver --stdio", cwd=repository_root_path),
+            ProcessLaunchInfo(cmd=cmd, cwd=repository_root_path),
             "python",
             solidlsp_settings,
         )
